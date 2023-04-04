@@ -24,13 +24,17 @@ namespace UnityEngine.XR.Content.Interaction
 
         [SerializeField]
         [Tooltip("Angle of the lever in the 'on' position")]
-        [Range(-90.0f, 90.0f)]
         float m_MaxAngle = 90.0f;
 
         [SerializeField]
         [Tooltip("Angle of the lever in the 'off' position")]
-        [Range(-90.0f, 90.0f)]
         float m_MinAngle = -90.0f;
+
+        [SerializeField]
+        Vector3 m_RotationAxis = Vector3.right;
+
+        [SerializeField]
+        Vector3 m_upAxis = Vector3.up;
 
         [SerializeField]
         [Tooltip("Events to trigger when the lever activates")]
@@ -140,7 +144,6 @@ namespace UnityEngine.XR.Content.Interaction
         {
             Vector3 direction = m_Interactor.GetAttachTransform(this).position - m_Handle.position;
             direction = transform.InverseTransformDirection(direction);
-            direction.x = 0;
 
             return direction.normalized;
         }
@@ -148,7 +151,12 @@ namespace UnityEngine.XR.Content.Interaction
         void UpdateValue()
         {
             var lookDirection = GetLookDirection();
-            var lookAngle = Mathf.Atan2(lookDirection.z, lookDirection.y) * Mathf.Rad2Deg;
+
+            var rightAxis = Vector3.Cross(m_RotationAxis, m_upAxis);
+            var rightValue= Vector3.Dot(rightAxis, lookDirection);
+            var upValue = Vector3.Dot(m_upAxis, lookDirection);
+
+            var lookAngle = Mathf.Atan2(rightValue, upValue) * Mathf.Rad2Deg;
 
             if (m_MinAngle < m_MaxAngle)
                 lookAngle = Mathf.Clamp(lookAngle, m_MinAngle, m_MaxAngle);
@@ -198,7 +206,7 @@ namespace UnityEngine.XR.Content.Interaction
         void SetHandleAngle(float angle)
         {
             if (m_Handle != null)
-                m_Handle.localRotation = Quaternion.Euler(angle, 0.0f, 0.0f);
+                m_Handle.localRotation = Quaternion.Euler(m_RotationAxis * angle);
         }
 
         void OnDrawGizmosSelected()
@@ -210,8 +218,8 @@ namespace UnityEngine.XR.Content.Interaction
 
             const float k_AngleLength = 0.25f;
 
-            var angleMaxPoint = angleStartPoint + transform.TransformDirection(Quaternion.Euler(m_MaxAngle, 0.0f, 0.0f) * Vector3.up) * k_AngleLength;
-            var angleMinPoint = angleStartPoint + transform.TransformDirection(Quaternion.Euler(m_MinAngle, 0.0f, 0.0f) * Vector3.up) * k_AngleLength;
+            var angleMaxPoint = angleStartPoint + transform.TransformDirection(Quaternion.Euler(m_RotationAxis * m_MaxAngle) * Vector3.up) * k_AngleLength;
+            var angleMinPoint = angleStartPoint + transform.TransformDirection(Quaternion.Euler(m_RotationAxis * m_MinAngle) * Vector3.up) * k_AngleLength;
 
             Gizmos.color = Color.green;
             Gizmos.DrawLine(angleStartPoint, angleMaxPoint);

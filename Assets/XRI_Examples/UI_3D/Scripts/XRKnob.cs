@@ -115,6 +115,10 @@ namespace UnityEngine.XR.Content.Interaction
         float m_TwistSensitivity = 1.5f;
 
         [SerializeField]
+        [Tooltip("How much controller rotation ")]
+        Vector3 m_RotationAxis = Vector3.up;
+
+        [SerializeField]
         [Tooltip("Events to trigger when the knob is rotated")]
         ValueChangeEvent m_OnValueChange = new ValueChangeEvent();
 
@@ -338,7 +342,7 @@ namespace UnityEngine.XR.Content.Interaction
             }
 
             if (m_Handle != null)
-                m_Handle.localEulerAngles = new Vector3(0.0f, angle, 0.0f);
+                m_Handle.localEulerAngles = m_RotationAxis * angle;
         }
 
         void SetValue(float value)
