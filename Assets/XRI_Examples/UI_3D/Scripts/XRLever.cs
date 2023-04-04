@@ -87,6 +87,20 @@ namespace UnityEngine.XR.Content.Interaction
             set => m_MinAngle = value;
         }
 
+        public Vector3 rotatingAxis
+        {
+            get => m_RotationAxis;
+            set => m_RotationAxis = value;
+        }
+
+
+        public Vector3 upAxis
+        {
+            get => m_upAxis;
+            set => m_upAxis = value;
+        }
+
+
         /// <summary>
         /// Events to trigger when the lever activates
         /// </summary>
