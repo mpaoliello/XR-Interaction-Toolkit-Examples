@@ -1,3 +1,6 @@
+using System;
+using System.Collections.Generic;
+using System.Linq;
 using UnityEngine.Events;
 using UnityEngine.XR.Interaction.Toolkit;
 
@@ -16,11 +19,16 @@ namespace UnityEngine.XR.Content.Interaction
 
         [SerializeField]
         [Tooltip("The value of the lever")]
-        bool m_Value = false;
+        int m_Value = 0;
 
         [SerializeField]
         [Tooltip("If enabled, the lever will snap to the value position when released")]
         bool m_LockToValue;
+        
+        [SerializeField]
+        [Tooltip("The number of steps the lever can have, distance is equal for all")]
+        [Range(2, 99)]
+        int m_Steps = 2;
 
         [SerializeField]
         [Tooltip("Angle of the lever in the 'on' position")]
@@ -36,15 +44,12 @@ namespace UnityEngine.XR.Content.Interaction
         [SerializeField]
         Vector3 m_upAxis = Vector3.up;
 
-        [SerializeField]
-        [Tooltip("Events to trigger when the lever activates")]
-        UnityEvent m_OnLeverActivate = new UnityEvent();
-
-        [SerializeField]
         [Tooltip("Events to trigger when the lever deactivates")]
-        UnityEvent m_OnLeverDeactivate = new UnityEvent();
+        List<UnityEvent> m_OnLeverActivate = new List<UnityEvent>(); 
 
         IXRSelectInteractor m_Interactor;
+
+        private List<float> values = new List<float>();
 
         /// <summary>
         /// The object that is visually grabbed and manipulated
@@ -58,7 +63,7 @@ namespace UnityEngine.XR.Content.Interaction
         /// <summary>
         /// The value of the lever
         /// </summary>
-        public bool value
+        public int value
         {
             get => m_Value;
             set => SetValue(value, true);
@@ -67,7 +72,26 @@ namespace UnityEngine.XR.Content.Interaction
         /// <summary>
         /// If enabled, the lever will snap to the value position when released
         /// </summary>
-        public bool lockToValue { get; set; }
+        public bool lockToValue
+        {
+            get => m_LockToValue;
+            set => m_LockToValue = value;
+        }
+        
+        /// <summary>
+        /// The number of steps the lever can have, distance is equal for all
+        /// </summary>
+        public int steps
+        {
+            get => m_Steps;
+            set
+            {
+                if (value == m_Steps)
+                    return;
+                m_Steps = Mathf.Clamp(value, 2, 99);
+                OnStepsUpdated();
+            } 
+        }
 
         /// <summary>
         /// Angle of the lever in the 'on' position
@@ -75,7 +99,14 @@ namespace UnityEngine.XR.Content.Interaction
         public float maxAngle
         {
             get => m_MaxAngle;
-            set => m_MaxAngle = value;
+            set
+            {
+                m_MaxAngle = value;
+                for (var i = 0; i < m_Steps; i++)
+                {
+                    values.Add(m_MinAngle + i * (m_MaxAngle - m_MinAngle) / (steps - 1));
+                }
+            }
         }
 
         /// <summary>
@@ -84,7 +115,14 @@ namespace UnityEngine.XR.Content.Interaction
         public float minAngle
         {
             get => m_MinAngle;
-            set => m_MinAngle = value;
+            set
+            {
+                m_MinAngle = value;
+                for (var i = 0; i < m_Steps; i++)
+                {
+                    values.Add(m_MinAngle + i * (m_MaxAngle - m_MinAngle) / (steps - 1));
+                }
+            }
         }
 
         public Vector3 rotatingAxis
@@ -104,12 +142,18 @@ namespace UnityEngine.XR.Content.Interaction
         /// <summary>
         /// Events to trigger when the lever activates
         /// </summary>
-        public UnityEvent onLeverActivate => m_OnLeverActivate;
-
+        public List<UnityEvent> onLeverActivate => m_OnLeverActivate;
+        
         /// <summary>
-        /// Events to trigger when the lever deactivates
+        /// Events to trigger when the lever activates
         /// </summary>
-        public UnityEvent onLeverDeactivate => m_OnLeverDeactivate;
+        public UnityEvent onLeverActivateByIndex(int index) => m_OnLeverActivate[index];
+
+        protected override void Awake()
+        {
+            base.Awake();
+            OnStepsUpdated();
+        }
 
         void Start()
         {
@@ -128,6 +172,20 @@ namespace UnityEngine.XR.Content.Interaction
             selectEntered.RemoveListener(StartGrab);
             selectExited.RemoveListener(EndGrab);
             base.OnDisable();
+        }
+
+        private void OnStepsUpdated()
+        {
+            values.Clear();
+            for (var i = 0; i < m_Steps; i++)
+            {
+                values.Add(m_MinAngle + i * (m_MaxAngle - m_MinAngle) / (steps - 1));
+            }
+            m_OnLeverActivate.Clear();
+            for (var i = 0; i < m_Steps; i++)
+            {
+                m_OnLeverActivate.Add(new UnityEvent());
+            }
         }
 
         void StartGrab(SelectEnterEventArgs args)
@@ -177,44 +235,51 @@ namespace UnityEngine.XR.Content.Interaction
             else
                 lookAngle = Mathf.Clamp(lookAngle, m_MaxAngle, m_MinAngle);
 
-            var maxAngleDistance = Mathf.Abs(m_MaxAngle - lookAngle);
-            var minAngleDistance = Mathf.Abs(m_MinAngle - lookAngle);
-
-            if (m_Value)
-                maxAngleDistance *= (1.0f - k_LeverDeadZone);
-            else
-                minAngleDistance *= (1.0f - k_LeverDeadZone);
-
-            var newValue = (maxAngleDistance < minAngleDistance);
+            // TODO: include deadzone in steps
+            
+            // var maxAngleDistance = Mathf.Abs(m_MaxAngle - lookAngle);
+            // var minAngleDistance = Mathf.Abs(m_MinAngle - lookAngle);
+            //
+            // if (m_Value)
+            //     maxAngleDistance *= (1.0f - k_LeverDeadZone);
+            // else
+            //     minAngleDistance *= (1.0f - k_LeverDeadZone);
+            //
+            // var newValue = (maxAngleDistance < minAngleDistance);
+            
+            var newValue = values.IndexOf(values.OrderBy(a => Math.Abs(lookAngle - a)).First());
 
             SetHandleAngle(lookAngle);
 
             SetValue(newValue);
         }
 
-        void SetValue(bool isOn, bool forceRotation = false)
+        void SetValue(int unClampedVal, bool forceRotation = false)
         {
-            if (m_Value == isOn)
+            var val = Mathf.Clamp(unClampedVal, 0, steps - 1);
+            
+            if (m_Value == val)
             {
                 if (forceRotation)
-                    SetHandleAngle(m_Value ? m_MaxAngle : m_MinAngle);
+                    SetHandleAngle(m_MinAngle + val * (m_MaxAngle - m_MinAngle) / (steps - 1));
 
                 return;
             }
 
-            m_Value = isOn;
+            m_Value = val;
 
-            if (m_Value)
-            {
-                m_OnLeverActivate.Invoke();
-            }
-            else
-            {
-                m_OnLeverDeactivate.Invoke();
-            }
+            // if (m_Value)
+            // {
+            //     m_OnLeverActivate.Invoke();
+            // }
+            // else
+            // {
+            //     m_OnLeverDeactivate.Invoke();
+            // }
+            onLeverActivateByIndex(val).Invoke();
 
             if (!isSelected && (m_LockToValue || forceRotation))
-                SetHandleAngle(m_Value ? m_MaxAngle : m_MinAngle);
+                SetHandleAngle(m_MinAngle + val * (m_MaxAngle - m_MinAngle) / (steps - 1));
         }
 
         void SetHandleAngle(float angle)
@@ -244,7 +309,7 @@ namespace UnityEngine.XR.Content.Interaction
 
         void OnValidate()
         {
-            SetHandleAngle(m_Value ? m_MaxAngle : m_MinAngle);
+            SetHandleAngle(m_MinAngle + m_Value * (m_MaxAngle - m_MinAngle) / (steps - 1));
         }
     }
 }
